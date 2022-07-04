@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 
 	"github.com/mattbaird/jsonpatch"
-	"github.com/maxlaverse/ndots-admission-controller/pkg/log"
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -18,26 +18,26 @@ const (
 func ReviewPodAdmission(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	req := ar.Request
 
-	log.Debugf("AdmissionReview UID=%v for Kind=%v/%v Namespace=%v Operation=%v UserInfo=%v", req.UID, req.Kind.Kind, req.Kind.Version, req.Namespace, req.Operation, req.UserInfo.Username)
+	klog.V(1).Infof("AdmissionReview UID=%v for Kind=%v/%v Namespace=%v Operation=%v UserInfo=%v", req.UID, req.Kind.Kind, req.Kind.Version, req.Namespace, req.Operation, req.UserInfo.Username)
 
 	pod, err := extractPodFromReview(req)
 	if err != nil {
-		log.Errorf("AdmissionResponse UID=%v for Kind=%v/%v Namespace=%v Result=UnmarshallingFailed Error=%v", req.UID, req.Kind.Kind, req.Kind.Version, req.Namespace, err)
+		klog.Errorf("AdmissionResponse UID=%v for Kind=%v/%v Namespace=%v Result=UnmarshallingFailed Error=%v", req.UID, req.Kind.Kind, req.Kind.Version, req.Namespace, err)
 		return rejectWithError(err)
 	}
 
 	if !podMutationRequired(pod) {
-		log.Debugf("AdmissionResponse UID=%v for Kind=%v/%v Namespace=%v PodName=%v Result=MutationNotRequired", req.UID, req.Kind.Kind, req.Kind.Version, req.Namespace, pod.Name)
+		klog.V(1).Infof("AdmissionResponse UID=%v for Kind=%v/%v Namespace=%v PodName=%v Result=MutationNotRequired", req.UID, req.Kind.Kind, req.Kind.Version, req.Namespace, pod.Name)
 		return admitWithoutChange()
 	}
 
 	patchBytes, err := createPatch(pod)
 	if err != nil {
-		log.Errorf("AdmissionResponse UID=%v for Kind=%v/%v Namespace=%v PodName=%v Result=PatchCreationFailed Error=%v", req.UID, req.Kind.Kind, req.Kind.Version, req.Namespace, pod.Name, err.Error())
+		klog.Errorf("AdmissionResponse UID=%v for Kind=%v/%v Namespace=%v PodName=%v Result=PatchCreationFailed Error=%v", req.UID, req.Kind.Kind, req.Kind.Version, req.Namespace, pod.Name, err.Error())
 		return rejectWithError(err)
 	}
 
-	log.Debugf("AdmissionResponse UID=%v for Kind=%v/%v Namespace=%v PodName=%v Result=MutationSuccessful Patch=%v", req.UID, req.Kind.Kind, req.Kind.Version, req.Namespace, pod.Name, string(patchBytes))
+	klog.V(1).Infof("AdmissionResponse UID=%v for Kind=%v/%v Namespace=%v PodName=%v Result=MutationSuccessful Patch=%v", req.UID, req.Kind.Kind, req.Kind.Version, req.Namespace, pod.Name, string(patchBytes))
 	return admitWithPatch(patchBytes)
 }
 
@@ -86,7 +86,7 @@ func podMutationRequired(pod *corev1.Pod) bool {
 func extractPodFromReview(req *admissionv1.AdmissionRequest) (*corev1.Pod, error) {
 	pod := &corev1.Pod{}
 	if err := json.Unmarshal(req.Object.Raw, pod); err != nil {
-		log.Errorf("Could not unmarshal raw object: %v", err)
+		klog.Errorf("Could not unmarshal raw object: %v", err)
 		return nil, err
 	}
 	return pod, nil

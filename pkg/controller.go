@@ -8,11 +8,11 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/maxlaverse/ndots-admission-controller/pkg/log"
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/klog/v2"
 )
 
 var (
@@ -64,11 +64,11 @@ func (srv *WebhookServer) Run(ctx context.Context) error {
 
 	go func() {
 		<-ctx.Done()
-		log.Info("Server shutting down")
+		klog.V(0).Infof("Server shutting down")
 		server.Shutdown(ctx)
 	}()
 
-	log.Info("Server started")
+	klog.V(0).Infof("Server started")
 	if err := server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("failed to listen and serve: %w", err)
 	}
@@ -89,14 +89,14 @@ func httpWrap(m admissionHandler) func(http.ResponseWriter, *http.Request) {
 			}
 		}
 		if len(body) == 0 {
-			log.Error("Client sent an empty body")
+			klog.Error("Client sent an empty body")
 			http.Error(w, "Client sent an empty body", http.StatusBadRequest)
 			return
 		}
 
 		contentType := r.Header.Get("Content-Type")
 		if contentType != "application/json" {
-			log.Errorf("Content-Type=%s, expect application/json", contentType)
+			klog.Errorf("Content-Type=%s, expect application/json", contentType)
 			http.Error(w, "invalid Content-Type, expect `application/json`", http.StatusUnsupportedMediaType)
 			return
 		}
@@ -104,7 +104,7 @@ func httpWrap(m admissionHandler) func(http.ResponseWriter, *http.Request) {
 		var admissionResponse *admissionv1.AdmissionResponse
 		ar := admissionv1.AdmissionReview{}
 		if _, _, err := deserializer.Decode(body, nil, &ar); err != nil {
-			log.Errorf("Can't decode body: %v", err)
+			klog.Errorf("Can't decode body: %v", err)
 			admissionResponse = &admissionv1.AdmissionResponse{
 				Result: &metav1.Status{
 					Message: err.Error(),
@@ -129,12 +129,12 @@ func httpWrap(m admissionHandler) func(http.ResponseWriter, *http.Request) {
 
 		resp, err := json.Marshal(admissionReview)
 		if err != nil {
-			log.Errorf("Can't encode response: %v", err)
+			klog.Errorf("Can't encode response: %v", err)
 			http.Error(w, fmt.Sprintf("could not encode response: %v", err), http.StatusInternalServerError)
 		}
 
 		if _, err := w.Write(resp); err != nil {
-			log.Errorf("Can't write response: %v", err)
+			klog.Errorf("Can't write response: %v", err)
 			http.Error(w, fmt.Sprintf("could not write response: %v", err), http.StatusInternalServerError)
 		}
 	}
