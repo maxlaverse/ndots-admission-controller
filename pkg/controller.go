@@ -60,6 +60,7 @@ func (srv *WebhookServer) Run(ctx context.Context) error {
 		Addr:      ":8443",
 		Handler:   mux,
 		TLSConfig: &tls.Config{Certificates: []tls.Certificate{keyPair}},
+		ErrorLog:  newHttpServerErrorLogger(),
 	}
 
 	go func() {
