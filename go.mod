@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/mattbaird/jsonpatch v0.0.0-20200820163806-098863c1fc24
-	github.com/stretchr/testify v1.8.1
+	github.com/stretchr/testify v1.8.2
 	github.com/urfave/cli/v2 v2.24.4
 	k8s.io/api v0.26.1
 	k8s.io/apimachinery v0.26.1
