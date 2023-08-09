@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 
+	"github.com/fsnotify/fsnotify"
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -47,6 +49,61 @@ func NewWebhookServer(keyopts KeyPair) *WebhookServer {
 // Run loads the key pair, listens to incoming admission reviews
 // and answers them until the context is cancelled.
 func (srv *WebhookServer) Run(ctx context.Context) error {
+	for {
+		keyContext, err := srv.cancelledContextOnKeyChanges(ctx)
+		if err != nil {
+			return err
+		}
+
+		err = srv.runServer(keyContext)
+		if err != nil || ctx.Err() != nil {
+			return err
+		}
+
+		klog.V(0).Infof("Restarting server")
+		time.Sleep(time.Second) // waiting a bit for second key to be propagated
+	}
+}
+
+func (srv *WebhookServer) cancelledContextOnKeyChanges(ctx context.Context) (context.Context, error) {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, err
+	}
+
+	err = watcher.Add(srv.keyopts.TLSCertFilepath)
+	if err != nil {
+		return nil, err
+	}
+
+	err = watcher.Add(srv.keyopts.TLSKeyFilepath)
+	if err != nil {
+		return nil, err
+	}
+
+	newCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		klog.V(0).Infof("Watching certificates: %v", watcher.WatchList())
+		defer cancel()
+		defer watcher.Close()
+
+		select {
+		case event, ok := <-watcher.Events:
+			if ok {
+				klog.V(0).Infof("event: %v", event)
+			}
+		case err, ok := <-watcher.Errors:
+			if ok {
+				klog.Errorf("error:", err)
+			}
+		case <-ctx.Done():
+		}
+	}()
+
+	return newCtx, nil
+}
+
+func (srv *WebhookServer) runServer(ctx context.Context) error {
 	keyPair, err := tls.LoadX509KeyPair(srv.keyopts.TLSCertFilepath, srv.keyopts.TLSKeyFilepath)
 	if err != nil {
 		return fmt.Errorf("error loading key pair: %w", err)
