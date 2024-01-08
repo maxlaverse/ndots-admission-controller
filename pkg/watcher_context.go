@@ -54,7 +54,7 @@ func fileWatcherContext(ctx context.Context, filepaths ...string) (context.Conte
 					return
 				}
 			case err := <-watcher.Errors:
-				klog.Errorf("watcher error:", err)
+				klog.Errorf("watcher error: %v", err)
 			case <-ctx.Done():
 			}
 		}
