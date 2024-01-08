@@ -2,34 +2,29 @@ package pkg
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"k8s.io/klog/v2"
 )
 
-const (
-	shutdownDelay = 1 * time.Second
-)
-
-func fileWatcherContext(ctx context.Context, filepaths ...string) (context.Context, error) {
+func directoryWatcherContext(ctx context.Context, directory string) (context.Context, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
 	}
 
-	for _, filepath := range filepaths {
-		err = watcher.Add(filepath)
-		if err != nil {
-			return nil, err
-		}
+	err = watcher.Add(directory)
+	if err != nil {
+		return nil, err
 	}
 
 	newCtx, cancel := context.WithCancel(ctx)
 	go func() {
-		klog.V(1).Infof("Watching files: %v", watcher.WatchList())
+		klog.V(1).Infof("Watching directory '%v'", watcher.WatchList())
 		defer func() {
-			klog.V(0).Infof("Watched files have been modified, cancelling context")
+			klog.V(0).Infof("Files in watched directory have been modified, cancelling context")
 			cancel()
 			watcher.Close()
 		}()
@@ -40,18 +35,22 @@ func fileWatcherContext(ctx context.Context, filepaths ...string) (context.Conte
 				if ok {
 					klog.V(1).Infof("event '%s' on '%s'", event.Op.String(), event.Name)
 
-					// Act on write events only, as we're unsure if Kubelet might perform noop
-					// chmod from time to time, e.g. when the Secrets are periodically synced.
-					if !event.Has(fsnotify.Write) {
-						break
-					}
+					/*
+						When a mounted Secret is updated, the following events can be observed:
+						* CREATE ..2024_01_08_11_42_04.2575209046
+						* CHMOD ..2024_01_08_11_42_04.2575209046
+						* CREATE ..data_tmp
+						* RENAME ..data_tmp
+						* CREATE ..data
+						* REMOVE	..2024_01_08_11_40_42.3496535436
 
-					// Artificially delays cancelling the context to avoid inconsistencies if
-					// all the files being watched haven't be written yet. We could keep track of
-					// their modification, and even check if they represent a consistent key pair,
-					// but it's probably not worth it at this point.
-					time.Sleep(shutdownDelay)
-					return
+						We want to cancell the context when most of the work has been done,
+						which is when the '..data' file is created (renamed to).
+					*/
+					if event.Has(fsnotify.Create) && strings.HasSuffix(event.Name, "/..data") {
+						time.Sleep(watcherShutdownDelay)
+						return
+					}
 				}
 			case err := <-watcher.Errors:
 				klog.Errorf("watcher error: %v", err)

@@ -3,12 +3,15 @@ package pkg
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"path/filepath"
 	"syscall"
+	"time"
 
 	"golang.org/x/sys/unix"
 	admissionv1 "k8s.io/api/admission/v1"
@@ -24,38 +27,37 @@ var (
 	runtimeScheme = runtime.NewScheme()
 )
 
-type admissionHandler func(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse
+const (
+	watcherShutdownDelay = 1 * time.Second
+	tlsCertFilename      = "tls.crt"
+	tlsKeyFilename       = "tls.key"
+)
 
-// KeyPair contains the certificate and private key required to listen
-// for TLS connections.
-type KeyPair struct {
-	TLSCertFilepath string
-	TLSKeyFilepath  string
-}
+type admissionHandler func(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse
 
 // WebhookServer is a webserver answering to AdmissionRequests sent by
 // the Kubernetes API server.
 type WebhookServer struct {
-	keyopts KeyPair
+	tlsCertificateDirectory string
 }
 
 // NewWebhookServer returns a new web server that can process
 // AdmissionReviews.
-func NewWebhookServer(keyopts KeyPair) *WebhookServer {
+func NewWebhookServer(tlsCertificateDirectory string) *WebhookServer {
 	return &WebhookServer{
-		keyopts: keyopts,
+		tlsCertificateDirectory: tlsCertificateDirectory,
 	}
 }
 
 // Run starts the webserver, and restarts it if the key pair is modified
 func (srv *WebhookServer) Run(ctx context.Context) error {
 	for {
-		keyContext, err := fileWatcherContext(ctx, srv.keyopts.TLSCertFilepath, srv.keyopts.TLSKeyFilepath)
+		watcherContext, err := directoryWatcherContext(ctx, srv.tlsCertificateDirectory)
 		if err != nil {
 			return err
 		}
 
-		err = srv.runServer(keyContext)
+		err = srv.runServer(watcherContext)
 		if err != nil || ctx.Err() != nil {
 			return err
 		}
@@ -67,19 +69,19 @@ func (srv *WebhookServer) Run(ctx context.Context) error {
 // runServer loads the key pair, listens to incoming admission reviews
 // and answers them until the context is cancelled.
 func (srv *WebhookServer) runServer(ctx context.Context) error {
-	keyPair, err := tls.LoadX509KeyPair(srv.keyopts.TLSCertFilepath, srv.keyopts.TLSKeyFilepath)
-	if err != nil {
-		return fmt.Errorf("error loading key pair: %w", err)
-	}
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", healthzHandler)
 	mux.HandleFunc("/webhook", httpWrap(ReviewPodAdmission))
 
+	certificates, err := srv.loadCertificates()
+	if err != nil {
+		return fmt.Errorf("error loading certificate: %w", err)
+	}
+
 	server := &http.Server{
 		Addr:      ":8443",
 		Handler:   mux,
-		TLSConfig: &tls.Config{Certificates: []tls.Certificate{keyPair}},
+		TLSConfig: &tls.Config{Certificates: certificates},
 		ErrorLog:  newHttpServerErrorLogger(),
 	}
 
@@ -112,6 +114,36 @@ func (srv *WebhookServer) runServer(ctx context.Context) error {
 		return fmt.Errorf("failed to serve: %w", err)
 	}
 	return nil
+}
+
+func (srv *WebhookServer) loadCertificates() ([]tls.Certificate, error) {
+	keyPair, err := tls.LoadX509KeyPair(filepath.Join(srv.tlsCertificateDirectory, tlsCertFilename), filepath.Join(srv.tlsCertificateDirectory, tlsKeyFilename))
+	if err != nil {
+		return nil, fmt.Errorf("error loading key pair: %w", err)
+	}
+
+	if len(keyPair.Certificate) == 0 {
+		return nil, fmt.Errorf("no certificate found")
+	}
+
+	foundValidCertificate := false
+	for _, certBytes := range keyPair.Certificate {
+		cert, err := x509.ParseCertificate(certBytes)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing certificate: %w", err)
+		}
+
+		klog.V(0).Infof("Certificate for '%v' is valid from '%s' to '%s'", cert.Subject, cert.NotBefore, cert.NotAfter)
+
+		if cert.NotBefore.Before(time.Now()) && cert.NotAfter.After(time.Now()) {
+			foundValidCertificate = true
+		}
+	}
+	if !foundValidCertificate {
+		return nil, fmt.Errorf("no valid certificate found")
+	}
+
+	return []tls.Certificate{keyPair}, nil
 }
 
 func healthzHandler(w http.ResponseWriter, r *http.Request) {

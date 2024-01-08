@@ -13,8 +13,7 @@ import (
 )
 
 func main() {
-	debugMode := false
-	var keyPair pkg.KeyPair
+	var tlsCertificateDirectory string
 
 	app := &cli.App{
 		Name:  "ndots-admission-controller",
@@ -25,21 +24,11 @@ func main() {
 			return fs.Set("v", strconv.Itoa(c.Int("loglevel")))
 		},
 		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name:        "debug",
-				Value:       false,
-				Usage:       "Output additional debug lines",
-				Destination: &debugMode,
-			}, &cli.StringFlag{
-				Name:        "tls-cert-file",
-				Value:       "certs/tls.crt",
-				Usage:       "TLS certificate",
-				Destination: &keyPair.TLSCertFilepath,
-			}, &cli.StringFlag{
-				Name:        "tls-key-file",
-				Value:       "certs/tls.key",
-				Usage:       "TLS key",
-				Destination: &keyPair.TLSKeyFilepath,
+			&cli.StringFlag{
+				Name:        "tls-certs-dir",
+				Value:       "certs/",
+				Usage:       "TLS certificate directory",
+				Destination: &tlsCertificateDirectory,
 			}, &cli.IntFlag{
 				Name:    "loglevel",
 				Aliases: []string{"v"},
@@ -50,7 +39,7 @@ func main() {
 		Action: func(c *cli.Context) error {
 			defer klog.Flush()
 
-			server := pkg.NewWebhookServer(keyPair)
+			server := pkg.NewWebhookServer(tlsCertificateDirectory)
 
 			ctx, stop := signal.NotifyContext(c.Context, os.Interrupt)
 			defer stop()
