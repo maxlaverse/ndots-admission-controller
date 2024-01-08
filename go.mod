@@ -9,7 +9,7 @@ require (
 	github.com/urfave/cli/v2 v2.24.4
 	k8s.io/api v0.26.1
 	k8s.io/apimachinery v0.26.1
-	k8s.io/klog/v2 v2.90.0
+	k8s.io/klog/v2 v2.100.1
 )
 
 require (
