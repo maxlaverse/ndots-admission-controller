@@ -28,10 +28,9 @@ var (
 )
 
 const (
-	watcherShutdownDelay             = 1 * time.Second
-	certificateValidityCheckInterval = 5 * time.Minute
-	tlsCertFilename                  = "tls.crt"
-	tlsKeyFilename                   = "tls.key"
+	watcherShutdownDelay = 1 * time.Second
+	tlsCertFilename      = "tls.crt"
+	tlsKeyFilename       = "tls.key"
 )
 
 type admissionHandler func(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse
