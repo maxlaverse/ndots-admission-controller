@@ -32,12 +32,12 @@ func main() {
 				Destination: &debugMode,
 			}, &cli.StringFlag{
 				Name:        "tls-cert-file",
-				Value:       "/etc/certs/tls.crt",
+				Value:       "certs/tls.crt",
 				Usage:       "TLS certificate",
 				Destination: &keyPair.TLSCertFilepath,
 			}, &cli.StringFlag{
 				Name:        "tls-key-file",
-				Value:       "/etc/certs/tls.key",
+				Value:       "certs/tls.key",
 				Usage:       "TLS key",
 				Destination: &keyPair.TLSKeyFilepath,
 			}, &cli.IntFlag{
