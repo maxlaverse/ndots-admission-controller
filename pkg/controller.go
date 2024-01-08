@@ -5,11 +5,12 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"net"
 	"net/http"
-	"time"
+	"syscall"
 
-	"github.com/fsnotify/fsnotify"
+	"golang.org/x/sys/unix"
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -46,11 +47,10 @@ func NewWebhookServer(keyopts KeyPair) *WebhookServer {
 	}
 }
 
-// Run loads the key pair, listens to incoming admission reviews
-// and answers them until the context is cancelled.
+// Run starts the webserver, and restarts it if the key pair is modified
 func (srv *WebhookServer) Run(ctx context.Context) error {
 	for {
-		keyContext, err := srv.cancelledContextOnKeyChanges(ctx)
+		keyContext, err := fileWatcherContext(ctx, srv.keyopts.TLSCertFilepath, srv.keyopts.TLSKeyFilepath)
 		if err != nil {
 			return err
 		}
@@ -61,48 +61,11 @@ func (srv *WebhookServer) Run(ctx context.Context) error {
 		}
 
 		klog.V(0).Infof("Restarting server")
-		time.Sleep(time.Second) // waiting a bit for second key to be propagated
 	}
 }
 
-func (srv *WebhookServer) cancelledContextOnKeyChanges(ctx context.Context) (context.Context, error) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return nil, err
-	}
-
-	err = watcher.Add(srv.keyopts.TLSCertFilepath)
-	if err != nil {
-		return nil, err
-	}
-
-	err = watcher.Add(srv.keyopts.TLSKeyFilepath)
-	if err != nil {
-		return nil, err
-	}
-
-	newCtx, cancel := context.WithCancel(ctx)
-	go func() {
-		klog.V(0).Infof("Watching certificates: %v", watcher.WatchList())
-		defer cancel()
-		defer watcher.Close()
-
-		select {
-		case event, ok := <-watcher.Events:
-			if ok {
-				klog.V(0).Infof("event: %v", event)
-			}
-		case err, ok := <-watcher.Errors:
-			if ok {
-				klog.Errorf("error:", err)
-			}
-		case <-ctx.Done():
-		}
-	}()
-
-	return newCtx, nil
-}
-
+// runServer loads the key pair, listens to incoming admission reviews
+// and answers them until the context is cancelled.
 func (srv *WebhookServer) runServer(ctx context.Context) error {
 	keyPair, err := tls.LoadX509KeyPair(srv.keyopts.TLSCertFilepath, srv.keyopts.TLSKeyFilepath)
 	if err != nil {
@@ -126,9 +89,27 @@ func (srv *WebhookServer) runServer(ctx context.Context) error {
 		server.Shutdown(ctx)
 	}()
 
+	listenConfig := net.ListenConfig{
+		Control: func(network, address string, c syscall.RawConn) error {
+			var opErr error
+			err := c.Control(func(fd uintptr) {
+				opErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1)
+			})
+			if err != nil {
+				return err
+			}
+			return opErr
+		},
+	}
+
+	listener, err := listenConfig.Listen(context.Background(), "tcp", server.Addr)
+	if err != nil {
+		return fmt.Errorf("failed to listen: %w", err)
+	}
+
 	klog.V(0).Infof("Server started")
-	if err := server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-		return fmt.Errorf("failed to listen and serve: %w", err)
+	if err := server.ServeTLS(listener, "", ""); err != nil && err != http.ErrServerClosed {
+		return fmt.Errorf("failed to serve: %w", err)
 	}
 	return nil
 }
@@ -142,7 +123,7 @@ func httpWrap(m admissionHandler) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body []byte
 		if r.Body != nil {
-			if data, err := ioutil.ReadAll(r.Body); err == nil {
+			if data, err := io.ReadAll(r.Body); err == nil {
 				body = data
 			}
 		}
