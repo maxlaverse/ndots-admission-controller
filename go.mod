@@ -10,7 +10,7 @@ require (
 	golang.org/x/sys v0.17.0
 	k8s.io/api v0.29.0
 	k8s.io/apimachinery v0.29.0
-	k8s.io/klog/v2 v2.120.0
+	k8s.io/klog/v2 v2.120.1
 )
 
 require (
