@@ -1,15 +1,16 @@
 module github.com/maxlaverse/ndots-admission-controller
 
 go 1.21
+toolchain go1.22.2
 
 require (
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/mattbaird/jsonpatch v0.0.0-20200820163806-098863c1fc24
 	github.com/stretchr/testify v1.8.4
 	github.com/urfave/cli/v2 v2.27.1
-	golang.org/x/sys v0.17.0
-	k8s.io/api v0.29.0
-	k8s.io/apimachinery v0.29.0
+	golang.org/x/sys v0.18.0
+	k8s.io/api v0.30.0
+	k8s.io/apimachinery v0.30.0
 	k8s.io/klog/v2 v2.120.1
 )
 
@@ -25,8 +26,8 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
-	golang.org/x/net v0.17.0 // indirect
-	golang.org/x/text v0.13.0 // indirect
+	golang.org/x/net v0.23.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
