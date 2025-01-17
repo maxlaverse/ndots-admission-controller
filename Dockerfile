@@ -1,9 +1,15 @@
-FROM golang:1.23 AS builder
+ARG BUILDPLATFORM
+FROM --platform=$BUILDPLATFORM golang:1.23 AS builder
 WORKDIR /build/
 COPY ./go.mod ./go.sum ./
 RUN go mod download
 COPY ./ ./
-RUN CGO_ENABLED=0 go build -mod=readonly -o ndots-admission-controller
+ARG TARGETPLATFORM
+RUN export GOOS=$(echo $TARGETPLATFORM | cut -d'/' -f1) \
+    && export GOARCH=$(echo $TARGETPLATFORM | cut -d'/' -f2) \
+    && export CGO_ENABLED=0 \
+    && echo "Building for GOOS=$GOOS, GOARCH=$GOARCH" \
+    && go build -mod=readonly -o ndots-admission-controller
 
 FROM scratch
 ENTRYPOINT ["/ndots-admission-controller"]
