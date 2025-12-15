@@ -9,7 +9,7 @@ require (
 	github.com/urfave/cli/v2 v2.27.7
 	golang.org/x/sys v0.36.0
 	k8s.io/api v0.34.0
-	k8s.io/apimachinery v0.34.0
+	k8s.io/apimachinery v0.34.3
 	k8s.io/klog/v2 v2.130.1
 )
 
