@@ -3,7 +3,7 @@ module github.com/maxlaverse/ndots-admission-controller
 go 1.26.0
 
 require (
-	github.com/fsnotify/fsnotify v1.9.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/mattbaird/jsonpatch v0.0.0-20240118010651-0ba75a80ca38
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli/v2 v2.27.7
